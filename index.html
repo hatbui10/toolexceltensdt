@@ -104,7 +104,7 @@
             line-height: 1.5;
         }
 
-        /* Khhu vực chứa các Sheet và Lớp */
+        /* Khu vực chứa các Sheet và Lớp */
         .sheet-section {
             margin-top: 30px;
             border-top: 2px solid var(--border-color);
@@ -242,7 +242,7 @@ function startProcessing(input) {
     reader.onload = function(e) {
         try {
             const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
+            const workbook = XLSX.read(data, { type: 'array', cellStyles: true });
             const validSheetsInFile = workbook.SheetNames.filter(name => targetSheets.includes(name.trim()));
             
             if (validSheetsInFile.length === 0) {
@@ -288,7 +288,7 @@ function processTargetSheets(workbook, sheetsToProcess) {
         progressBar.innerText = percent + '%';
 
         const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
 
         if (rows.length > 0) {
             const colAIndex = 0;  
@@ -299,7 +299,6 @@ function processTargetSheets(workbook, sheetsToProcess) {
             let currentUpperHeader = "";
             let currentClassStudents = [];
 
-            // Container riêng cho Sheet này
             let sheetBlock = document.createElement('div');
             sheetBlock.className = 'sheet-section';
             sheetBlock.innerHTML = `<div class="sheet-title">SHEET: ${sheetName}</div>`;
@@ -308,7 +307,6 @@ function processTargetSheets(workbook, sheetsToProcess) {
             cardsGrid.className = 'cards-grid';
             sheetBlock.appendChild(cardsGrid);
 
-            // Hàm phụ để đẩy một ô Lớp vào giao diện
             function createClassCard(upperTitle, className, studentsList) {
                 if (studentsList.length === 0) return;
 
@@ -360,17 +358,14 @@ function processTargetSheets(workbook, sheetsToProcess) {
                 let cellB_lower = cellB.toLowerCase();
                 let cleanPhoneCheck = cellP.replace(/[^0-9]/g, "");
 
-                // Nhận diện dòng tên lớp mới
                 if (cellB && cleanPhoneCheck.length < 9 && 
                     (cellB.includes("-") || cellB.includes("/") || cellA.match(/^(I|II|III|IV|V|VI|VII|VIII|IX|X)\b/) || cellB_lower.includes("kid") || cellB_lower.includes("smile") || cellB_lower.includes("happy") || cellB_lower.includes("athena") || cellB_lower.includes("win"))) {
                     
-                    // Xuất ô lớp cũ ra trước nếu có học sinh
                     if (currentClassStudents.length > 0) {
                         createClassCard(currentUpperHeader, currentClassName, currentClassStudents);
                         currentClassStudents = [];
                     }
                     
-                    // Tìm dòng tiêu đề lịch học phía trên hàng này
                     let upperInfo = "";
                     if (rowIndex > 0) {
                         let prevRow = rows[rowIndex - 1];
@@ -394,9 +389,24 @@ function processTargetSheets(workbook, sheetsToProcess) {
                     return;
                 }
 
-                // Thu thập học sinh hợp lệ
                 let cleanPhone = cellP.replace(/[^0-9]/g, "");
-                if (cellB && !/^\d+$/.test(cellB) && cleanPhone.length >= 9 && cleanPhone.length <= 11) {
+                
+                // Khôi phục lại số 0 ở đầu nếu chỉ có 9 chữ số
+                if (cleanPhone.length === 9 && !cleanPhone.startsWith("0")) {
+                    cleanPhone = "0" + cleanPhone;
+                }
+
+                // === ĐOẠN ĐỊNH DẠNG SĐT THÀNH "xxx xxx xxx" ===
+                // Nếu là số điện thoại 10 số (sau khi đã khôi phục số 0), chia thành cụm: 3 số - 3 số - 4 số (Ví dụ: 091 234 5678)
+                if (cleanPhone.length === 10) {
+                    cleanPhone = cleanPhone.replace(/(\d{4})(\d{3})(\d{3})/, "$1 $2 $3");
+                } 
+                // Nếu số điện thoại có độ dài khác (ví dụ 11 số cũ hoặc 9 số chưa xử lý), chia đều cụm 3 số
+                else if (cleanPhone.length > 0) {
+                    cleanPhone = cleanPhone.replace(/(\d{3})(?=\d)/g, "$1 ");
+                }
+
+                if (cellB && !/^\d+$/.test(cellB) && cleanPhone.replace(/\s/g, "").length >= 9 && cleanPhone.replace(/\s/g, "").length <= 11) {
                     if (!currentClassName) {
                         currentClassName = `Chung - Khối ${sheetName}`;
                     }
@@ -404,12 +414,10 @@ function processTargetSheets(workbook, sheetsToProcess) {
                 }
             });
 
-            // Xuất nốt ô lớp cuối cùng của sheet
             if (currentClassStudents.length > 0) {
                 createClassCard(currentUpperHeader, currentClassName, currentClassStudents);
             }
 
-            // Nếu trong sheet thực sự tạo ra các ô card lớp hợp lệ, append nó vào giao diện chính
             if (cardsGrid.children.length > 0) {
                 mainOutputContainer.appendChild(sheetBlock);
             }
