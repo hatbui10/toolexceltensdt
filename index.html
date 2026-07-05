@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bộ Lọc Học Viên Gộp Tiêu Đề Lớp</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #121212;
+            --container-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --accent-color: #2ecc71;
+            --border-color: #333333;
+            --input-bg: #2a2a2a;
+            --btn-hover: #27ae60;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            background: var(--container-bg);
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        h2 {
+            text-align: center;
+            color: var(--accent-color);
+            margin-top: 0;
+        }
+
+        .upload-section {
+            background: #252525;
+            border: 2px dashed var(--border-color);
+            padding: 30px;
+            text-align: center;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .file-input-label {
+            background-color: var(--accent-color);
+            color: #121212;
+            padding: 12px 25px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .file-input-label:hover {
+            background-color: var(--btn-hover);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: #2a2a2a;
+            border-radius: 20px;
+            margin: 20px 0;
+            display: none;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 24px;
+            background-color: var(--accent-color);
+            text-align: center;
+            line-height: 24px;
+            color: #000;
+            font-weight: bold;
+            font-size: 13px;
+            transition: width 0.1s ease;
+        }
+
+        .output-box {
+            display: flex;
+            flex-direction: column;
+            margin-top: 15px;
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--accent-color);
+        }
+
+        textarea {
+            width: 100%;
+            height: 500px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 12px;
+            box-sizing: border-box;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .status {
+            margin-top: 15px;
+            font-size: 15px;
+            text-align: center;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>BỘ LỌC HỌC VIÊN + LẤY TIÊU ĐỀ KHUNG GIỜ LỚP</h2>
+    
+    <div class="upload-section">
+        <p style="margin: 0 0 10px 0;">Trích xuất cột B và P từ sheet SV đến DH26 (Lấy kèm dòng tiêu đề lịch học/phòng học phía trên tên lớp)</p>
+        <label for="excelFile" class="file-input-label">Chọn tệp danh sách Excel</label>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="startProcessing(this)">
+        <div id="fileNameDisplay" style="margin-top: 10px; color: #aaa; font-style: italic;">Chưa chọn tệp nào</div>
+    </div>
+
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar" id="progressBar">0%</div>
+    </div>
+
+    <div class="output-box">
+        <label for="outputData">Kết quả trích xuất phân tách kèm lịch học chi tiết:</label>
+        <textarea id="outputData" placeholder="Kết quả kèm tiêu đề lịch học phía trên của lớp sẽ xuất hiện ở đây..." readonly></textarea>
+    </div>
+
+    <div id="statusMessage" class="status"></div>
+</div>
+
+<script>
+// Danh sách các sheet mục tiêu theo đúng yêu cầu
+const targetSheets = ["SV", "12", "11", "10", "9", "8", "7", "6", "5", "4", "3", "2", "DH25", "DH26"];
+
+function startProcessing(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    document.getElementById('fileNameDisplay').innerText = `Tệp đang lọc: ${file.name}`;
+    document.getElementById('outputData').value = "";
+    document.getElementById('statusMessage').innerHTML = "Đang xử lý cấu trúc dữ liệu nâng cao...";
+    
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressBar.innerText = '0%';
+
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            const validSheetsInFile = workbook.SheetNames.filter(name => targetSheets.includes(name.trim()));
+            
+            if (validSheetsInFile.length === 0) {
+                document.getElementById('statusMessage').style.color = "#ff4757";
+                document.getElementById('statusMessage').innerText = "Không tìm thấy bất kỳ sheet nào phù hợp (từ SV đến DH26).";
+                progressContainer.style.display = 'none';
+                return;
+            }
+
+            processTargetSheets(workbook, validSheetsInFile);
+        } catch (error) {
+            console.error(error);
+            document.getElementById('statusMessage').style.color = "#ff4757";
+            document.getElementById('statusMessage').innerText = "Đã xảy ra lỗi khi đọc dữ liệu tệp Excel.";
+            progressContainer.style.display = 'none';
+        }
+    };
+
+    reader.readAsArrayBuffer(file);
+}
+
+function processTargetSheets(workbook, sheetsToProcess) {
+    const totalSheets = sheetsToProcess.length;
+    let currentIdx = 0;
+    let finalLines = [];
+    let totalStudentsCount = 0;
+
+    const progressBar = document.getElementById('progressBar');
+    const statusMsg = document.getElementById('statusMessage');
+    const outputTextarea = document.getElementById('outputData');
+
+    function parseNext() {
+        if (currentIdx >= totalSheets) {
+            // == HOÀN THÀNH ==
+            progressBar.style.width = '100%';
+            progressBar.innerText = '100% Hoàn thành';
+            
+            if (totalStudentsCount > 0) {
+                outputTextarea.value = finalLines.join('\n');
+                statusMsg.style.color = "var(--accent-color)";
+                statusMsg.innerHTML = `✓ Thành công! Đã bóc tách dữ liệu kèm tiêu đề lịch học.<br>Tổng cộng thu được <strong>${totalStudentsCount}</strong> học viên hợp lệ.`;
+            } else {
+                statusMsg.style.color = "#ff4757";
+                statusMsg.innerText = "Không trích xuất được dữ liệu học viên nào.";
+            }
+            return;
+        }
+
+        const sheetName = sheetsToProcess[currentIdx];
+        statusMsg.style.color = "#aaa";
+        statusMsg.innerText = `Đang phân tách lớp trong sheet (${currentIdx + 1}/${totalSheets}): "${sheetName}"...`;
+
+        let percent = Math.round((currentIdx / totalSheets) * 100);
+        progressBar.style.width = percent + '%';
+        progressBar.innerText = percent + '%';
+
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        if (rows.length > 0) {
+            const colAIndex = 0;  // Cột A
+            const colBIndex = 1;  // Cột B
+            const colPIndex = 15; // Cột P
+
+            let currentClassName = "";
+            let currentClassStudents = [];
+            let isSheetHeaderPrinted = false;
+
+            // Vòng lặp quét qua từng hàng dữ liệu trong sheet
+            rows.forEach((row, rowIndex) => {
+                if (!row) return;
+
+                let cellA = row[colAIndex] ? row[colAIndex].toString().trim() : "";
+                let cellB = row[colBIndex] ? row[colBIndex].toString().trim() : "";
+                let cellP = row[colPIndex] ? row[colPIndex].toString().trim() : "";
+
+                let cellB_lower = cellB.toLowerCase();
+                let cleanPhoneCheck = cellP.replace(/[^0-9]/g, "");
+
+                // --- BƯỚC 1: NHẬN DIỆN KHI GẶP DÒNG TÊN LỚP MỚI ---
+                if (cellB && cleanPhoneCheck.length < 9 && 
+                    (cellB.includes("-") || cellB.includes("/") || cellA.match(/^(I|II|III|IV|V|VI|VII|VIII|IX|X)\b/) || cellB_lower.includes("kid") || cellB_lower.includes("smile") || cellB_lower.includes("happy") || cellB_lower.includes("athena") || cellB_lower.includes("win"))) {
+                    
+                    // Nếu lớp quét trước đó đang giữ danh sách học viên, tiến hành ghi lại dữ liệu lớp cũ trước
+                    if (currentClassStudents.length > 0) {
+                        if (!isSheetHeaderPrinted) {
+                            if (finalLines.length > 0) finalLines.push("");
+                            finalLines.push(`========== SHEET: ${sheetName} ==========`);
+                            isSheetHeaderPrinted = true;
+                        }
+                        finalLines.push(currentClassName); // Xuất tên kèm tiêu đề lớp cũ
+                        finalLines.push(...currentClassStudents);
+                        totalStudentsCount += currentClassStudents.length;
+                        currentClassStudents = [];
+                    }
+                    
+                    // --- BƯỚC 2: QUÉT NGƯỢC LÊN TRÊN ĐỂ LẤY DÒNG TIÊU ĐỀ LỊCH HỌC PHÍA TRÊN ---
+                    let upperHeaderInfo = "";
+                    if (rowIndex > 0) {
+                        let previousRow = rows[rowIndex - 1];
+                        if (previousRow) {
+                            // Ưu tiên gom các thông tin ghi chú lịch học ở cột B hoặc cột A của dòng phía trên
+                            let pB = previousRow[colBIndex] ? previousRow[colBIndex].toString().trim() : "";
+                            let pA = previousRow[colAIndex] ? previousRow[colAIndex].toString().trim() : "";
+                            
+                            // Nếu hàng ngay trên có chữ chỉ giờ hoặc chỉ khối lớp, lấy nội dung đó làm tiêu đề phụ
+                            if (pB && !pB.toLowerCase().includes("tên học sinh") && !pB.toLowerCase().includes("họ và tên")) {
+                                upperHeaderInfo = pB;
+                            } else if (pA) {
+                                upperHeaderInfo = pA;
+                            }
+                        }
+                    }
+
+                    // Lưu tên lớp mới gộp chung với tiêu đề phía trên
+                    if (upperHeaderInfo) {
+                        currentClassName = `\n[${upperHeaderInfo}] - [LỚP: ${cellB}]`;
+                    } else {
+                        currentClassName = `\n[LỚP: ${cellB}]`;
+                    }
+                    return;
+                }
+
+                // Bỏ qua dòng header thô của bảng điểm danh
+                if (cellB === "" || cellB_lower === "tên học sinh" || cellB_lower === "tên hs" || cellB_lower === "họ và tên") {
+                    return;
+                }
+
+                // --- BƯỚC 3: THU THẬP HỌC VIÊN THUỘC LỚP ---
+                let cleanPhone = cellP.replace(/[^0-9]/g, "");
+
+                if (cellB && !/^\d+$/.test(cellB) && cleanPhone.length >= 9 && cleanPhone.length <= 11) {
+                    if (!currentClassName) {
+                        currentClassName = `\n[Chung - Khối ${sheetName}]`;
+                    }
+                    currentClassStudents.push(`${cellB}\t${cleanPhone}`);
+                }
+            });
+
+            // Gom nốt cụm danh sách lớp cuối cùng của sheet
+            if (currentClassStudents.length > 0) {
+                if (!isSheetHeaderPrinted) {
+                    if (finalLines.length > 0) finalLines.push("");
+                    finalLines.push(`========== SHEET: ${sheetName} ==========`);
+                }
+                finalLines.push(currentClassName);
+                finalLines.push(...currentClassStudents);
+                totalStudentsCount += currentClassStudents.length;
+            }
+        }
+
+        currentIdx++;
+        setTimeout(parseNext, 50);
+    }
+
+    parseNext();
+}
+</script>
+
+</body>
+</html>
