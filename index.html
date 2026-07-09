@@ -169,12 +169,14 @@
             background-color: var(--accent-color);
             color: #121212;
             border: none;
-            padding: 5px 12px;
+            padding: 4px 10px;
             border-radius: 4px;
             text-decoration: none;
             font-weight: bold;
-            font-size: 13px;
-            display: inline-block;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
             transition: background 0.2s;
         }
 
@@ -290,19 +292,48 @@
             margin-bottom: 10px;
         }
 
-        .students-area {
+        /* KHU VỰC DANH SÁCH HỌC VIÊN MỚI THAY CHO TEXTAREA */
+        .students-list-box {
             width: 100%;
             height: 180px;
             background: var(--input-bg);
-            color: #ffffff;
             border: 1px solid #333;
             border-radius: 4px;
-            padding: 8px;
+            padding: 5px;
             box-sizing: border-box;
-            font-family: monospace;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .student-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px;
+            border-bottom: 1px solid #222;
             font-size: 13px;
-            resize: none;
-            line-height: 1.4;
+        }
+
+        .student-row:last-child {
+            border-bottom: none;
+        }
+
+        .student-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+        }
+
+        .std-name {
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .std-phone {
+            color: #aaa;
+            font-family: monospace;
+            font-size: 12px;
         }
 
         .copy-btn {
@@ -310,7 +341,6 @@
             color: #fff;
             border: none;
             padding: 8px 12px;
-            margin-top: 10px;
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
@@ -335,7 +365,7 @@
     <h2>BỘ LỌC HỌC VIÊN CHIA Ô VÀ COPY THEO LỚP</h2>
     
     <div class="upload-section">
-        <p style="margin: 0 0 10px 0;">Trích xuất cột B và P từ sheet SV đến DH26 (Mỗi lớp nằm riêng 1 ô kèm nút copy)</p>
+        <p style="margin: 0 0 10px 0;">Trích xuất cột B và P từ sheet SV đến DH26 (Mỗi lớp có nút Gọi điện riêng cho từng học sinh)</p>
         <div class="btn-group">
             <label for="excelFile" class="file-input-label">Chọn tệp danh sách Excel</label>
             <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="startProcessing(this)">
@@ -364,7 +394,7 @@
                 </tr>
             </thead>
             <tbody id="resultBody">
-                </tbody>
+            </tbody>
         </table>
     </div>
 
@@ -379,9 +409,8 @@
 
 <script>
 const targetSheets = ["SV", "12", "11", "10", "9", "8", "7", "6", "5", "4", "3", "2", "DH25", "DH26"];
-let finalStoredData = []; // Mảng chứa dữ liệu cấu trúc cuối cùng để lưu Local
+let finalStoredData = []; 
 
-// TỰ ĐỘNG CHẠY KHI MỞ TRANG: Kiểm tra xem Local Storage có dữ liệu cũ không
 window.onload = function() {
     const cachedData = localStorage.getItem('excel_processed_data');
     const cachedFileName = localStorage.getItem('excel_file_name');
@@ -411,7 +440,7 @@ function startProcessing(input) {
     progressBar.style.width = '0%';
     progressBar.innerText = '0%';
 
-    finalStoredData = []; // Reset mảng lưu trữ
+    finalStoredData = []; 
 
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -453,7 +482,6 @@ function processTargetSheets(workbook, sheetsToProcess, fileName) {
             statusMsg.style.color = "var(--accent-color)";
             statusMsg.innerHTML = `✓ Phân tách ô hoàn tất! Đã chia dữ liệu rành mạch theo từng lớp.<br>Tổng cộng thu được <strong>${totalStudentsCount}</strong> học viên.`;
             
-            // LƯU VÀO LOCALSTORAGE
             try {
                 localStorage.setItem('excel_processed_data', JSON.stringify(finalStoredData));
                 localStorage.setItem('excel_file_name', fileName);
@@ -554,7 +582,11 @@ function processTargetSheets(workbook, sheetsToProcess, fileName) {
                         currentClassName = `Chung - Khối ${sheetName}`;
                         actualClassTitleForSearch = `Chung - Khối ${sheetName}`;
                     }
-                    currentClassStudents.push(`${cellB}\t${cleanPhone}`);
+                    // Lưu dưới dạng Object để dễ xử lý render nút bấm
+                    currentClassStudents.push({
+                        name: cellB,
+                        phone: cleanPhone
+                    });
                 }
             });
 
@@ -580,7 +612,7 @@ function processTargetSheets(workbook, sheetsToProcess, fileName) {
     parseNext();
 }
 
-// HÀM VẼ GIAO DIỆN TỪ MẢNG DỮ LIỆU (Dùng chung cho cả Tải mới và Khôi phục Local)
+// THAY ĐỔI LỚN Ở ĐÂY: Tạo danh sách dòng kèm nút Gọi Điện thay vì Textarea
 function renderBlocksFromData(dataBlocks) {
     const mainOutputContainer = document.getElementById('outputContainer');
     mainOutputContainer.innerHTML = ""; 
@@ -607,27 +639,44 @@ function renderBlocksFromData(dataBlocks) {
             }
             header.innerHTML += `<div class="class-name">[LỚP: ${cardData.className}]</div>`;
 
-            let txtArea = document.createElement('textarea');
-            txtArea.className = 'students-area';
-            txtArea.readOnly = true;
-            txtArea.value = cardData.studentsList.join('\n');
+            // Khung chứa danh sách học sinh (Cuộn dọc)
+            let listContainer = document.createElement('div');
+            listContainer.className = 'students-list-box';
+
+            let textForCopy = []; // Phục vụ cho tính năng Copy toàn bộ lớp
+
+            cardData.studentsList.forEach(student => {
+                textForCopy.push(`${student.name}\t${student.phone}`);
+                let rawPhone = student.phone.replace(/\s/g, "");
+
+                let row = document.createElement('div');
+                row.className = 'student-row';
+                row.innerHTML = `
+                    <div class="student-info">
+                        <span class="std-name">${student.name}</span>
+                        <span class="std-phone">${student.phone}</span>
+                    </div>
+                    <a href="tel:${rawPhone}" class="call-btn">📞 Gọi</a>
+                `;
+                listContainer.appendChild(row);
+            });
 
             let btn = document.createElement('button');
             btn.className = 'copy-btn';
-            btn.innerText = '📋 Copy Tên + SĐT';
+            btn.innerText = '📋 Copy Tên + SĐT Toàn Lớp';
             btn.onclick = function() {
-                navigator.clipboard.writeText(txtArea.value).then(() => {
+                navigator.clipboard.writeText(textForCopy.join('\n')).then(() => {
                     btn.innerText = '✓ Đã Copy Thành Công!';
                     btn.classList.add('copied');
                     setTimeout(() => {
-                        btn.innerText = '📋 Copy Tên + SĐT';
+                        btn.innerText = '📋 Copy Tên + SĐT Toàn Lớp';
                         btn.classList.remove('copied');
                     }, 1500);
                 });
             };
 
             card.appendChild(header);
-            card.appendChild(txtArea);
+            card.appendChild(listContainer);
             card.appendChild(btn);
             cardsGrid.appendChild(card);
         });
@@ -654,47 +703,40 @@ function searchStudent() {
     let matchCount = 0;
 
     allCards.forEach(card => {
-        const textarea = card.querySelector('.students-area');
+        const rows = card.querySelectorAll('.student-row');
         const className = card.getAttribute('data-classname') || "Chưa rõ lớp";
+        let isCardMatched = false;
 
-        if (textarea) {
-            const lines = textarea.value.split('\n');
-            let isCardMatched = false;
+        rows.forEach(row => {
+            const studentName = row.querySelector('.std-name').innerText;
+            const studentPhone = row.querySelector('.std-phone').innerText;
+            
+            const textToSearch = (studentName + " " + studentPhone).toLowerCase();
+            const textNoSpace = textToSearch.replace(/\s/g, "");
 
-            lines.forEach(line => {
-                if (!line.trim()) return;
-                
-                const parts = line.split('\t');
-                const studentName = parts[0] || "";
-                const studentPhone = parts[1] || "";
-                
-                const lineLower = line.toLowerCase();
-                const lineNoSpace = lineLower.replace(/\s/g, "");
+            if (textToSearch.includes(keyword) || textNoSpace.includes(absoluteKeyword)) {
+                matchCount++;
+                isCardMatched = true;
 
-                if (lineLower.includes(keyword) || lineNoSpace.includes(absoluteKeyword)) {
-                    matchCount++;
-                    isCardMatched = true;
+                const rawPhone = studentPhone.replace(/\s/g, "");
 
-                    const rawPhone = studentPhone.replace(/\s/g, "");
+                const resultRow = document.createElement('tr');
+                resultRow.innerHTML = `
+                    <td style="font-weight: bold; color: #fff;">${studentName}</td>
+                    <td style="color: #2ecc71; font-family: monospace;">${studentPhone}</td>
+                    <td style="color: #ffb142; font-weight: bold;">${className}</td>
+                    <td>
+                        <a href="tel:${rawPhone}" class="call-btn">📞 Gọi Điện</a>
+                    </td>
+                `;
+                resultBody.appendChild(resultRow);
+            }
+        });
 
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td style="font-weight: bold; color: #fff;">${studentName}</td>
-                        <td style="color: #2ecc71; font-family: monospace;">${studentPhone}</td>
-                        <td style="color: #ffb142; font-weight: bold;">${className}</td>
-                        <td>
-                            <a href="tel:${rawPhone}" class="call-btn">📞 Gọi Điện</a>
-                        </td>
-                    `;
-                    resultBody.appendChild(row);
-                }
-            });
-
-            if (isCardMatched) {
-                card.classList.add('highlighted');
-                if (!firstMatchCard) {
-                    firstMatchCard = card;
-                }
+        if (isCardMatched) {
+            card.classList.add('highlighted');
+            if (!firstMatchCard) {
+                firstMatchCard = card;
             }
         }
     });
@@ -712,7 +754,6 @@ function searchStudent() {
     }
 }
 
-// HÀM XÓA BỘ NHỚ LOCAL STORAGE
 function clearLocalStorage() {
     if (confirm("Bạn có chắc chắn muốn xóa toàn bộ dữ liệu lịch sử đã lưu trên trình duyệt không?")) {
         localStorage.removeItem('excel_processed_data');
