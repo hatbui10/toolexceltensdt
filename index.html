@@ -121,24 +121,66 @@
         }
         .class-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(1fr));
-            gap: 20px;
+            grid-template-columns: 1fr;
+            gap: 12px;
             margin-bottom: 25px;
         }
 
-        /* Panel chính bao bọc từng lớp học */
+        /* Panel chính bao bọc từng lớp học - BIẾN THÀNH ACCORDION */
         .class-panel { 
             background: #0a0a14; 
             border: 1px solid #00f0ff; 
             border-radius: 6px; 
-            padding: 15px 8px; 
+            padding: 0;
             box-shadow: 0 0 15px rgba(0, 240, 255, 0.15); 
-            margin-bottom: 20px;
+            margin-bottom: 10px;
+            overflow: hidden;
         }
         .class-panel.highlighted {
             border: 2px solid #ffd700 !important;
             box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
         }
+
+        /* Thanh tiêu đề bấm để kích hoạt đóng mở lớp */
+        .class-trigger-header {
+            padding: 15px 10px;
+            cursor: pointer;
+            background: #0e0e1f;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: background 0.2s;
+        }
+        .class-trigger-header:hover {
+            background: #14142d;
+        }
+        /* Mũi tên góc phải */
+        .class-trigger-header::after {
+            content: '➔';
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #00f0ff;
+            font-size: 1rem;
+            transition: transform 0.3s ease;
+        }
+        .class-panel.active .class-trigger-header::after {
+            transform: translateY(-50%) rotate(90deg);
+            color: #ff007f;
+        }
+
+        /* Vùng chứa nội dung ẩn/hiện */
+        .class-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            padding: 0 10px;
+        }
+        .class-panel.active .class-content {
+            padding: 10px 10px 15px 10px;
+        }
+
         .class-stats { text-align: center; color: #ffd700; font-size: 0.9rem; margin-bottom: 15px; font-weight: bold; }
 
         /* Cấu trúc Danh sách học sinh & Thẻ học viên */
@@ -413,6 +455,7 @@ function processTargetSheets(workbook, sheetsToProcess, fileName) {
     parseNext();
 }
 
+/* THAY ĐỔI LỚN TẠI ĐÂY: Render các lớp thành tiêu đề Accordion gọn gàng */
 function renderBlocksFromData(dataBlocks) {
     const mainOutputContainer = document.getElementById('outputContainer');
     mainOutputContainer.innerHTML = ""; 
@@ -434,10 +477,19 @@ function renderBlocksFromData(dataBlocks) {
             card.id = classCardId;
             card.setAttribute('data-classname', cardData.realTitle);
 
-            let headerText = cardData.upperTitle ? `<h3>${cardData.upperTitle}</h3>` : "";
-            headerText += `<h3>Danh Sách: ${cardData.className}</h3>`;
+            // Phần tiêu đề bọc sự kiện Click đóng/mở Accordion công nghệ
+            let triggerHeader = document.createElement('div');
+            triggerHeader.className = 'class-trigger-header';
             
-            let statsText = `<div class="class-stats">Sĩ số: ${cardData.studentsList.length}</div>`;
+            let titleHtml = cardData.upperTitle ? `<h2>${cardData.upperTitle}</h2>` : "";
+            titleHtml += `<h3>LỚP: ${cardData.className} (Sĩ số: ${cardData.studentsList.length})</h3>`;
+            triggerHeader.innerHTML = titleHtml;
+
+            // Vùng nội dung danh sách học sinh bị ẩn đi mặc định
+            let contentDiv = document.createElement('div');
+            contentDiv.className = 'class-content';
+
+            let statsText = `<div class="class-stats" style="margin-top:10px;">Sĩ số hiện tại: ${cardData.studentsList.length}</div>`;
 
             let listContainer = document.createElement('div');
             listContainer.className = 'student-list';
@@ -499,7 +551,8 @@ function renderBlocksFromData(dataBlocks) {
             let btnCopy = document.createElement('button');
             btnCopy.className = 'btn-copy-class';
             btnCopy.innerText = '📋 Copy Tên + SĐT Toàn Lớp';
-            btnCopy.onclick = function() {
+            btnCopy.onclick = function(e) {
+                e.stopPropagation(); // Ngăn sự kiện đóng mở oằn tà là vằn khi bấm copy
                 navigator.clipboard.writeText(textForCopy.join('\n')).then(() => {
                     btnCopy.innerText = '✓ Đã Copy Lớp Thành Công!';
                     btnCopy.classList.add('copied');
@@ -510,9 +563,22 @@ function renderBlocksFromData(dataBlocks) {
                 });
             };
 
-            card.innerHTML = headerText + statsText;
-            card.appendChild(listContainer);
-            card.appendChild(btnCopy);
+            // Logic toggle chiều cao mượt bằng scrollHeight
+            triggerHeader.onclick = function() {
+                const isActive = card.classList.toggle('active');
+                if (isActive) {
+                    contentDiv.style.maxHeight = contentDiv.scrollHeight + "px";
+                } else {
+                    contentDiv.style.maxHeight = null;
+                }
+            };
+
+            contentDiv.innerHTML = statsText;
+            contentDiv.appendChild(listContainer);
+            contentDiv.appendChild(btnCopy);
+            
+            card.appendChild(triggerHeader);
+            card.appendChild(contentDiv);
             cardsGrid.appendChild(card);
         });
 
@@ -539,17 +605,20 @@ function updateStudentField(uid, field, value) {
 function deleteStudentInline(uid, name, cardId) {
     if (confirm(`Bạn có chắc muốn XÓA học sinh ${name}?`)) {
         let found = false;
+        let targetCard = null;
         for (let block of finalStoredData) {
             for (let card of block.cards) {
                 let initialLength = card.studentsList.length;
                 card.studentsList = card.studentsList.filter(s => s.uid !== uid);
                 if (card.studentsList.length !== initialLength) {
                     found = true;
-                    // Cập nhật lại sỹ số trên giao diện panel
+                    targetCard = card;
                     const panelDom = document.getElementById(cardId);
                     if (panelDom) {
                         const statsDom = panelDom.querySelector('.class-stats');
-                        if (statsDom) statsDom.innerText = `Sĩ số: ${card.studentsList.length}`;
+                        if (statsDom) statsDom.innerText = `Sĩ số hiện tại: ${card.studentsList.length}`;
+                        const h3Dom = panelDom.querySelector('.class-trigger-header h3');
+                        if (h3Dom) h3Dom.innerText = `LỚP: ${card.className} (Sĩ số: ${card.studentsList.length})`;
                     }
                     break;
                 }
@@ -557,14 +626,18 @@ function deleteStudentInline(uid, name, cardId) {
             if (found) break;
         }
         
-        // Xóa phần tử trên DOM trực tiếp
         const cardDom = document.getElementById(`std-card-dom-${uid}`);
         if (cardDom) cardDom.remove();
         
-        // Đồng bộ lại vào LocalStorage
+        // Tính toán lại độ cao của Accordion content sau khi xóa bớt phần tử
+        const panelDom = document.getElementById(cardId);
+        if (panelDom && panelDom.classList.contains('active')) {
+            const contentDiv = panelDom.querySelector('.class-content');
+            if (contentDiv) contentDiv.style.maxHeight = contentDiv.scrollHeight + "px";
+        }
+        
         localStorage.setItem('excel_processed_data_v4', JSON.stringify(finalStoredData));
         
-        // Cập nhật tổng số lượng học viên hệ thống công khai
         let currentTotal = parseInt(localStorage.getItem('excel_student_count_v4') || 0);
         if (currentTotal > 0) {
             currentTotal--;
@@ -592,7 +665,11 @@ function searchStudent() {
     resultBox.style.display = 'none';
     
     const allClassPanels = document.querySelectorAll('.class-panel');
-    allClassPanels.forEach(p => p.classList.remove('highlighted'));
+    allClassPanels.forEach(p => {
+        p.classList.remove('highlighted', 'active');
+        const contentDiv = p.querySelector('.class-content');
+        if (contentDiv) contentDiv.style.maxHeight = null;
+    });
 
     if (keyword === "") return;
 
@@ -632,7 +709,11 @@ function searchStudent() {
             if (isCardMatched) {
                 let targetCardDom = document.getElementById(`panel-box-${bIdx}-${cIdx}`);
                 if (targetCardDom) {
-                    targetCardDom.classList.add('highlighted');
+                    targetCardDom.classList.add('highlighted', 'active');
+                    // Khi tìm thấy, tự mở bung luôn panel accordion đó ra để hiển thị học viên
+                    const contentDiv = targetCardDom.querySelector('.class-content');
+                    if (contentDiv) contentDiv.style.maxHeight = contentDiv.scrollHeight + "px";
+                    
                     if (!firstMatchCardDom) firstMatchCardDom = targetCardDom;
                 }
             }
